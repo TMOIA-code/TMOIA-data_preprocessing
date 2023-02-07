@@ -1,6 +1,16 @@
-# Utils for searching gene of SNP
-__precompile__()
+module SearchSNP
+
 include("utils.jl")
+
+export search_gene_of_SNP
+
+function x_in_vecInt(vecIn::Vector{Int64})::Int64
+    mtx = 1
+    for nElem in eachindex(vecIn)
+        mtx = mtx * vecIn[nElem]
+    end
+    return mtx
+end
 
 ## Warn: Trashing this!!!
 function BS_approx_num(goal::Int64, pathF::String, nrowF::Int64=my_count_lines(pathF), inWhichCol::Vector{Int64}=[4,5])::Int64
@@ -33,7 +43,6 @@ function BS_approx_num(goal::Int64, pathF::String, nrowF::Int64=my_count_lines(p
     end
     return Int64(guessO)
 end
-
 
 function util_search_LbyL(lineApprox::Int64, pathGTF::String, nChr::String, nPos::Int64, markL::Int64)
     ## grep lines by gene id
@@ -78,7 +87,6 @@ function util_search_LbyL(lineApprox::Int64, pathGTF::String, nChr::String, nPos
     return outGene, outGTF
 end
 
-
 function util_search_gene_by_snp(nChr::String, nPos::Int64, markL::Int64, pathGTF_chrX::String, nRowGTFx::Int64, intergenic::Bool)::String
     outVec = Vector{String}(undef, 5)
     ## BS
@@ -101,7 +109,6 @@ function util_search_gene_by_snp(nChr::String, nPos::Int64, markL::Int64, pathGT
     end
     return out
 end
-
 
 function util_search_region_by_snp(nChr::String, nPos::Int64, markL::Int64, pathGTF_chrX::String, nRowGTF::Vector{Int64}, intergenic::Bool)
     outGene = [""]
@@ -127,8 +134,6 @@ function util_search_region_by_snp(nChr::String, nPos::Int64, markL::Int64, path
     end
     return o_gene, o_gtf
 end
-
-
 
 ##==============================================- Main utils -==============================================##
 
@@ -156,7 +161,6 @@ function search_gene_by_snp(pathSNPmx::String, dirGTF::String, nRowGTF::Vector{I
     close(io)
     return nothing
 end
-
 
 # Give full information
 function search_region_by_snp(pathSNPmx::String, dirGTF::String, nRowGTF::Vector{Int64},
@@ -192,3 +196,46 @@ function search_region_by_snp(pathSNPmx::String, dirGTF::String, nRowGTF::Vector
     return nothing
 end
 
+function search_gene_of_SNP(pathSNPmx::String, dirGTF::String, intergenic::Bool=true; skipRow::Int64=0, slimResult::Bool=true)
+    ##sh split_chr.sh
+    ## Count lines for GTF of each Chr
+    GTFs = readdir(dirGTF)
+    GTFs = GTFs[occursin.(Regex(".gtf"), GTFs)]
+    nRowGTFs = Vector{Int64}(undef, length(GTFs))
+    Threads.@threads for gn in eachindex(GTFs)
+        nRowGTFs[gn] = my_count_lines(dirGTF * "/" * GTFs[gn])
+    end
+    ## Run
+    num_thread = Threads.nthreads()
+    num_SNP = my_count_lines(pathSNPmx) - skipRow
+    staL, endL = multiThreadSplit(num_SNP, num_thread)
+    if slimResult
+        Threads.@threads for nT in 1:num_thread
+            search_gene_by_snp(pathSNPmx, dirGTF, nRowGTFs, (skipRow + staL[nT]), (skipRow + endL[nT]), nT, intergenic, skipRow)
+        end
+    else
+        Threads.@threads for nT in 1:num_thread
+            search_region_by_snp(pathSNPmx, dirGTF, nRowGTFs, (skipRow + staL[nT]), (skipRow + endL[nT]), nT, intergenic, skipRow)
+        end
+    end
+    ## Combine file parts
+    dirW = dirname(pathSNPmx) * "/"
+    if intergenic
+        pathGTFout = *(dirW, "_gtf-", "withIntergenic_", basename(pathSNPmx)[1:end-4], "_", basename(dirGTF), ".gtf")
+        pathGeneOut = *(dirW, "_gene-", "withIntergenic_", basename(pathSNPmx)[1:end-4], "_", basename(dirGTF), ".txt")
+    else
+        pathGTFout = *(dirW, "_gtf-", "onlyGene_", basename(pathSNPmx)[1:end-4], "_", basename(dirGTF), ".gtf")
+        pathGeneOut = *(dirW, "_gene-", "onlyGene_", basename(pathSNPmx)[1:end-4], "_", basename(dirGTF), ".txt")
+    end
+    #@show pathGeneOut pathGTFout
+    grep_gtf = dirW * ".p-gtf-*"
+    grep_gene = dirW * ".p-gene-*"
+    if !slimResult
+        conc_fileParts(grep_gtf, pathGTFout)
+    else
+        conc_fileParts(grep_gene, pathGeneOut)
+    end
+    return nothing
+end
+
+end # of SearchSNP

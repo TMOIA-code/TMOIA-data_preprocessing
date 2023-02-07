@@ -1,8 +1,5 @@
-#
 using CUDA, Flux, BSON, Random
-__precompile__()
 include("utils.jl")
-include("utils_dr.jl")
 
 
 function zero_gradient!(myGradient, whToZeros)
@@ -45,6 +42,13 @@ function my_MAECor(model, dataloader, returnX::String="meanMAE")
     return maes, cors
 end
 
+
+function std_tvt(p1::Matrix, p2::Matrix, p3::Matrix, stdFunc=std_zscore!)
+    conc = hcat(p1, p2, p3)
+    ncol1, ncol2, ncol3 = size(p1)[2], size(p2)[2], size(p3)[2]
+    stdFunc(conc)
+    return conc[:, 1:ncol1], conc[:, (ncol1+1):(ncol1+ncol2)], conc[:, (ncol1+ncol2+1):end]
+end
 
 function get_loader(whichSp::String = "01", dirIn::String = "path to r10", returnMatrix::Bool = false, batch_size::Int64 = 32,
                     grepXphase::String = "SNP", grepYphase::String = "_pheno_zscore", select_y::Bool=false;
@@ -215,8 +219,19 @@ function save_model(model_cpu, path_save::String; isCompress::Bool=false, thread
 end
 
 
-function myTrain(model_cpu, trn_loader, val_loader, tst_loader,
-                epoch_max::Int64=3200, lr::Float64=0.0001, es_delay::Int64=450,
+mutable struct myStructParamTrain
+    epMax::Int64
+    lr::Float64
+    esTries::Int64
+end
+
+mutable struct myStructDataIn
+    myTrn::Any
+    myTst::Any
+    myVal::Any
+end
+
+function myTrain(model_cpu::Any, dataIn::myStructDataIn, paramTrain::myStructParamTrain=myStructParamTrain(3200, 1e-4, 450),
                 freeze_param::Bool=false, write_r::Bool=false, save_models::Bool=false;
                 path_w_rec::String=".dr_rslt.txt", path_save_model::String=".model.bson", isZipModel::Bool=true, wh2freeze::Matrix=zeros(Float32,1,1))
     ##
@@ -224,19 +239,19 @@ function myTrain(model_cpu, trn_loader, val_loader, tst_loader,
     model_best = model_cpu
     model = model_cpu |> gpu
     ps = Flux.params(model)
-    opt = Flux.Adam(lr)
+    opt = Flux.Adam(paramTrain.lr)
     loss(x, y) = Flux.Losses.mse(model(x), y)
-    outDim = size(tst_loader.data[2])[1]
+    #outDim = size(dataIn.myTst.data[2])[1]
     ## ES
-    es = let f = () -> my_MAECor(model, val_loader)
-        Flux.early_stopping(f, es_delay; init_score=f())
+    es = let f = () -> my_MAECor(model, dataIn.myVal)
+        Flux.early_stopping(f, paramTrain.esTries; init_score=f())
     end
     mean_mae_best = 9999999.9
     ep_best = 0
     ###============================= Train, get best epoch num ===========================###
-    for ep in 1:epoch_max
+    for ep in 1:paramTrain.epMax
         println("--- Epoch ", ep)
-        for (x, y) in trn_loader
+        for (x, y) in dataIn.myTrn
             x, y = gpu(x), gpu(y)
             gradients = gradient(() -> loss(x, y), ps)
             ###==============================================================================
@@ -259,7 +274,7 @@ function myTrain(model_cpu, trn_loader, val_loader, tst_loader,
     if save_models; task_sMd = @task save_model(model_best, path_save_model, isCompress=isZipModel); schedule(task_sMd); end;
     ###====================================================================================###
     model = gpu(model_best)
-    r_tst, r_val, r_trn = my_MAECor(model, tst_loader, "cor"), my_MAECor(model, val_loader, "cor"), my_MAECor(model, trn_loader, "cor")
+    r_tst, r_val, r_trn = my_MAECor(model, dataIn.myTst, "cor"), my_MAECor(model, dataIn.myVal, "cor"), my_MAECor(model, dataIn.myTrn, "cor")
     #CUDA.reclaim()
     model = nothing
     if write_r

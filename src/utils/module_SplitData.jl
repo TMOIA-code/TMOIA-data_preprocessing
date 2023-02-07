@@ -1,0 +1,70 @@
+module SplitData
+
+include("utils.jl")
+
+export write_randomRepeats, my_split_bootstrap
+export pipe_randomSplits
+
+#=
+function my_split3(num::Int64=500, seed::Int64=1234, ratio_A::Float64=0.7, ratio_B::Float64=0.15)#ratio_C=0.15
+    shuffled_indices = Random.shuffle(MersenneTwister(seed), 1:num)
+    n_divA = round(Int, ratio_A * num)
+    n_divB = round(Int, ratio_B * num)
+    indices_pA = shuffled_indices[1:n_divA]
+    indices_pB = shuffled_indices[(n_divA + 1):(n_divA + n_divB)]
+    indices_pC = shuffled_indices[(n_divA + n_divB + 1):end]
+    return indices_pA, indices_pB, indices_pC
+end
+=#
+function my_split_bootstrap(num::Int64=600, seed::Int64=1234)### Size of test&validation proportion is dynamic!
+    trnO = sample(MersenneTwister(seed), collect(StepRange(1, Int64(1), num)), num, replace=true, ordered=false)
+    num_trn_uniq = length(unique(trnO))
+    num_tstval = num - num_trn_uniq
+    num_tst = ceil(num_tstval / 2) |> Int64
+    tstval = setdiff(collect(StepRange(1, Int64(1), num)), unique(trnO))
+    tstO = tstval[1:num_tst]
+    valO = tstval[(num_tst + 1):end]
+    return trnO, valO, tstO
+end
+function write_splits(fPaths::Vector{String}, splitN::Int64=1, seed::Int64=1234, dlm::Char='\t')
+    num_sample = my_count_lines(fPaths[1])
+    idx_trn, idx_val, idx_tst = my_split_bootstrap(num_sample, seed)
+    MarkSplit = format_numLen(splitN, 2)
+    @views for pn in eachindex(fPaths)
+        fin = my_read_table(fPaths[pn], String, dlm)
+        CSV.write(string(dirname(fPaths[pn]), "/r10/", MarkSplit, "_trn_", basename(fPaths[pn])), Tables.table(fin[idx_trn, :]), header=false, delim="\t")
+        CSV.write(string(dirname(fPaths[pn]), "/r10/", MarkSplit, "_val_", basename(fPaths[pn])), Tables.table(fin[idx_val, :]), header=false, delim="\t")
+        CSV.write(string(dirname(fPaths[pn]), "/r10/", MarkSplit, "_tst_", basename(fPaths[pn])), Tables.table(fin[idx_tst, :]), header=false, delim="\t")
+    end
+    return nothing
+end
+function write_randomRepeats(fPaths::Vector{String}; repN::Int64=10, seedInit::Int64=2345, isNThreads::Bool=false, dlm::Char='\t')
+    mkpath(string(dirname(fPaths[1]), "/r10/"))
+    if isNThreads
+        Threads.@threads for rn in 1:repN
+            write_splits(fPaths, rn, (seedInit + rn), dlm)
+        end
+    else
+        for rn in 1:repN
+            write_splits(fPaths, rn, (seedInit + rn), dlm)
+        end
+    end
+    return nothing
+end
+
+function pipe_randomSplits(dirIn::String, traits::Vector{String}, fOmics::Vector{String}, FolderSuffix::String)
+    for trts in eachindex(traits)
+        for oms in eachindex(fOmics)
+            write_randomRepeats([string(dirIn, traits[trts], FolderSuffix, "/", fOmics[oms])], isNThreads=true)
+        end
+    end
+    return nothing
+end
+#=
+dirTH = "ath/dataset/THvar025/"
+traits = ["FT16+RL", "CL", "RL"]
+suffix = "_AllOmicsG"
+omics = ["id.txt", "pheno_zscore.txt", "pheno.txt", "SNP.txt", "exp.txt", "mCG.txt", "mCHG.txt", "mCHH.txt"]
+=#
+
+end

@@ -1,6 +1,5 @@
 ## Models struc
 using Flux
-__precompile__()
 
 function md_snpS(FileGeneToSNP::String, num_y::Int64 = 1, isSimple::Bool = false)
     ## Get SNP foreach gene
