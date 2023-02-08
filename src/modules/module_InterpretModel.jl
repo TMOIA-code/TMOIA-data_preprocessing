@@ -1,17 +1,20 @@
 # Simple Model Interpretability
 module InterpretModel
 
-using BSON, Flux, Random, Tables, CSV
+using BSON, Flux, Random, Tables
+
+include("utils.jl")
+using .MyUtils
 
 export interpreter_inDir, interpreter
 
 function interpreter(path_model::String, bias::Bool=false)
     BSON.@load path_model model
     path_wt = string(dirname(path_model), "/", "interp_weight_", basename(path_model)[1:(end-5)], ".txt")
-    CSV.write(path_wt, Tables.table(model.layers[1].weight), delim = "\t", header = false)
+    my_write_table(model.layers[1].weight, path_wt, toTable=true)
     if bias
         path_bias = string(dirname(path_model), "/", "interp_bias_", basename(path_model)[1:(end-5)], ".txt")
-        CSV.write(path_bias, Tables.table(model.layers[1].bias), delim = "\t", header = false)
+        my_write_table(model.layers[1].bias, path_bias, toTable=true)
     end
     return nothing
 end

@@ -1,6 +1,7 @@
 module SearchSNP
 
 include("utils.jl")
+using .MyUtils
 
 export search_gene_of_SNP
 

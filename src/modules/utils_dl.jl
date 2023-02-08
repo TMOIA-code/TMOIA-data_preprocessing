@@ -1,6 +1,7 @@
 using CUDA, Flux, BSON, Random
 include("utils.jl")
-
+include("types.jl")
+using .MyUtils
 
 function zero_gradient!(myGradient, whToZeros)
     @views begin
@@ -218,18 +219,6 @@ function save_model(model_cpu, path_save::String; isCompress::Bool=false, thread
     return nothing
 end
 
-
-mutable struct myStructParamTrain
-    epMax::Int64
-    lr::Float64
-    esTries::Int64
-end
-
-mutable struct myStructDataIn
-    myTrn::Any
-    myTst::Any
-    myVal::Any
-end
 
 function myTrain(model_cpu::Any, dataIn::myStructDataIn, paramTrain::myStructParamTrain=myStructParamTrain(3200, 1e-4, 450),
                 freeze_param::Bool=false, write_r::Bool=false, save_models::Bool=false;

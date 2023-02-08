@@ -1,6 +1,8 @@
 module MyFilters
 
 include("utils.jl")
+using .MyUtils
+using Tables, CSV
 
 export filter_cols, filter_rows
 export filter_rows_SNP, filter_ath
@@ -63,10 +65,10 @@ end
 function calc_var_A2Blines(filePath::String, writePath::String,
                             lineBegin::Int64, lineEnd::Int64,
                             threshold_var::Float64=0.001, threshold_NA::Float64=0.25,
-                            delim::String="\t", skipCol::Vector{Int64}=[1])
+                            delimIn::Char='\t', skipCol::Vector{Int64}=[1])
     mark_new = true
     for rn in lineBegin:lineEnd
-        row = my_readline(filePath, rn, delim=delim, maxLen=8192*32)
+        row = my_readline(filePath, rn, delim=delimIn, maxLen=8192*32)
         tmp_row, tmp_noNA, cNA = procc_byRow(row[Not(skipCol)])
         if (1 - threshold_NA) * (length(row) - length(skipCol)) > length(tmp_noNA)
             continue
@@ -76,9 +78,9 @@ function calc_var_A2Blines(filePath::String, writePath::String,
             out = [string(row[skipCol])]
             append!(out, string.(vecFilled))
             if !mark_new
-                write_csvRows(writePath, out, true, delim=delim)
+                my_write_table(out, writePath, isAppend=true, toTable=true)
             else
-                write_csvRows(writePath, out, false, delim=delim)
+                my_write_table(out, writePath, toTable=true)
                 mark_new = false
             end
         end
@@ -90,16 +92,16 @@ function calc_var_A2Blines_s(filePath::String, writePath::String,
                                lineBegin::Int64, lineEnd::Int64,
                                threshold_var::Float64=0.001;
                                skipCol::Vector{Int64}=[1,2,3,4],
-                               delim_r::String=",", delim_w::String="\t")
+                               delimIn::Char=',')
     mark_new = true
     for rn in lineBegin:lineEnd
-        row = my_readline(filePath, rn, delim=delim_r, maxLen=8192*32)
+        row = my_readline(filePath, rn, delim=delimIn, maxLen=8192*32)
         linePure = parse.(Float32, row[Not(skipCol)]) |> Vector{Float32}
         if threshold_var < var(linePure)
             if !mark_new
-                write_csvRows(writePath, row, true, delim=delim_w)
+                my_write_table(row, writePath, isAppend=true, toTable=true)
             else
-                write_csvRows(writePath, row, false, delim=delim_w)
+                my_write_table(row, writePath, toTable=true)
                 mark_new = false
             end
         end
@@ -107,10 +109,10 @@ function calc_var_A2Blines_s(filePath::String, writePath::String,
     return nothing
 end
 
-function filter_cols_byfile(origFilePath::String, tags::Vector{String}, id_Xomics::Vector{String}, delim::String="\t")
+function filter_cols_byfile(origFilePath::String, tags::Vector{String}, id_Xomics::Vector{String}, delimIn::Char='\t')
     grepLen = length(id_Xomics[1])
-    line1 = my_readline(origFilePath, 1, delim=delim)
-    cols_inTags = my_readline(origFilePath, 2, delim=delim, maxLen=8192*32) .∈ (tags,)
+    line1 = my_readline(origFilePath, 1, delim=delimIn)
+    cols_inTags = my_readline(origFilePath, 2, delim=delimIn, maxLen=8192*32) .∈ (tags,)
     cols_Xomics = cut_vec_str(line1, grepLen) .∈ (id_Xomics,)
     avail_cols  = (cols_inTags + cols_Xomics) .> 1
     line1_avail = line1[avail_cols]
@@ -123,21 +125,44 @@ function filter_cols_byfile(origFilePath::String, tags::Vector{String}, id_Xomic
     ## header
     o1 = [string(line1[1])]
     append!(o1, line1_avail[col_sort])
-    write_csvRows(string(dirname(origFilePath), "/", ".fltCol_", basename(origFilePath)), o1, false, delim=delim)
+    tmp_path = string(dirname(origFilePath), "/", ".fltCol_", basename(origFilePath))
+    my_write_table(o1, tmp_path, toTable=true)
     ##
-    for rown in CSV.Rows(origFilePath, delim=delim, header=2)
+    for rown in CSV.Rows(origFilePath, delim=delimIn, header=2)
         rown = string.(rown)
         out = [string(rown[1])]
         append!(out, rown[avail_cols][col_sort])
-        write_csvRows(string(dirname(origFilePath), "/", ".fltCol_", basename(origFilePath)), out, true, delim=delim)
+        tmp_path = string(dirname(origFilePath), "/", ".fltCol_", basename(origFilePath))
+        my_write_table(out, tmp_path, isAppend=true, toTable=true)
     end
     return nothing
+end
+
+
+## Pick samples' id owning meth, mirna and mrna
+function sampl_own_Xomics(origFilePaths::Vector{String}, len_id::Int64=16, delim::Char='\t', isWrite::Bool=false, wrt_pref::String=".ownAll_")
+    out = [] |> Vector{String}
+    for fpath in eachindex(origFilePaths)
+        if fpath < 2
+            out = my_readline(origFilePaths[fpath], 1, delim=delim)[Not(1)]
+            if len_id > 1; out = cut_vec_str(out, len_id); end;
+            continue
+        end
+        tcgaB = my_readline(origFilePaths[fpath], 1, delim=delim)[Not(1)]
+        if len_id > 1; tcgaB = cut_vec_str(tcgaB, len_id); end;
+        out = intersect(unique(out), unique(tcgaB))
+    end
+    if isWrite
+        wnm = string(wrt_pref, "_len_", len_id, ".csv")
+        my_write_table(out, wnm, toTable=true)
+    end
+    return out
 end
 
 ##==================================##
 
 ## Filter samples: with 3 omics? in tags? (line2 removed) (sorted by id_Xomics)
-function filter_cols(origFilePaths::Vector{String}, tags::Vector{String}, grepLen::Int64=16, delim::String="\t")
+function filter_cols(origFilePaths::Vector{String}, tags::Vector{String}, grepLen::Int64=16, delim::Char='\t')
     id_Xomics = sampl_own_Xomics(origFilePaths, grepLen, delim, false)
     Threads.@threads for nf in eachindex(origFilePaths)
         filter_cols_byfile(origFilePaths[nf], tags, id_Xomics, delim)
@@ -146,7 +171,7 @@ function filter_cols(origFilePaths::Vector{String}, tags::Vector{String}, grepLe
 end
 
 ## Filter features by threshold NA and threshold Var, paralleled.
-function filter_rows(filePath::String, threshold_var::Float64=0.001, threshold_NA::Float64=0.25; delim::String="\t", headersN::Int64=2)## remove 2-row headers
+function filter_rows(filePath::String, threshold_var::Float64=0.001, threshold_NA::Float64=0.25; delim::Char='\t', headersN::Int64=2)## remove 2-row headers
     ##
     fileDir = string(dirname(filePath), "/")
     fileName = basename(filePath)
@@ -162,7 +187,9 @@ function filter_rows(filePath::String, threshold_var::Float64=0.001, threshold_N
                           (headersN + startPts[nT]), (headersN + endPts[nT]),  threshold_var, threshold_NA, delim)
     end
     ### Write header
-    write_csvRows(string(fileDir, ".tmp_0000_header_", fileName, "_THvar-", threshold_var, "_THna-", threshold_NA, ".txt"), my_readline(filePath, 1, delim=delim), false)
+    tmp_hd = my_readline(filePath, 1, delim=delim)
+    tmp_hdn = string(fileDir, ".tmp_0000_header_", fileName, "_THvar-", threshold_var, "_THna-", threshold_NA, ".txt")
+    my_write_table(tmp_hd, tmp_hdn, toTable=true)
     ## Conc parts
     path_w = string(fileDir, "_f-X_", fileName, "_THvar-", threshold_var, "_THna-", threshold_NA, ".txt")
     grep_w = string(fileDir, ".tmp_*")
@@ -171,7 +198,7 @@ function filter_rows(filePath::String, threshold_var::Float64=0.001, threshold_N
 end
 
 ## Filter SNPs by threshold Var, paralleled.
-function filter_rows_SNP(filePath::String, threshold_var::Float64=0.01, delim_r::String=",")
+function filter_rows_SNP(filePath::String, threshold_var::Float64=0.01, delimIn::Char=',')
     ##
     fileDir = dirname(filePath) * "/"
     fileName = basename(filePath)
@@ -185,7 +212,7 @@ function filter_rows_SNP(filePath::String, threshold_var::Float64=0.01, delim_r:
     ## Calc vars, multi-thread
     Threads.@threads for nT in 1:threadNum
         calc_var_A2Blines_s(filePath, *(fileDir, ".tmp_running_THvar-", threshold_var, "_p-", format_numLen(nT, 2), "_", fileName[1:end-4], ".txt"),
-                            startPts[nT], endPts[nT],  threshold_var, delim_r=delim_r)
+                            startPts[nT], endPts[nT],  threshold_var, delimIn=delimIn)
     end
     conc_fileParts(*(fileDir, ".tmp_*"), *(fileDir, "_", fileName[1:end-4], "_THvar-", threshold_var, ".txt"))
     return nothing

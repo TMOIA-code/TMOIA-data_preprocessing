@@ -1,6 +1,8 @@
 module SplitData
 
+using Random
 include("utils.jl")
+using .MyUtils
 
 export write_randomRepeats, my_split_bootstrap
 export pipe_randomSplits
@@ -32,9 +34,9 @@ function write_splits(fPaths::Vector{String}, splitN::Int64=1, seed::Int64=1234,
     MarkSplit = format_numLen(splitN, 2)
     @views for pn in eachindex(fPaths)
         fin = my_read_table(fPaths[pn], String, dlm)
-        CSV.write(string(dirname(fPaths[pn]), "/r10/", MarkSplit, "_trn_", basename(fPaths[pn])), Tables.table(fin[idx_trn, :]), header=false, delim="\t")
-        CSV.write(string(dirname(fPaths[pn]), "/r10/", MarkSplit, "_val_", basename(fPaths[pn])), Tables.table(fin[idx_val, :]), header=false, delim="\t")
-        CSV.write(string(dirname(fPaths[pn]), "/r10/", MarkSplit, "_tst_", basename(fPaths[pn])), Tables.table(fin[idx_tst, :]), header=false, delim="\t")
+        my_write_table(fin[idx_trn, :], string(dirname(fPaths[pn]), "/r10/", MarkSplit, "_trn_", basename(fPaths[pn])), toTable=true)
+        my_write_table(fin[idx_val, :], string(dirname(fPaths[pn]), "/r10/", MarkSplit, "_val_", basename(fPaths[pn])), toTable=true)
+        my_write_table(fin[idx_tst, :], string(dirname(fPaths[pn]), "/r10/", MarkSplit, "_tst_", basename(fPaths[pn])), toTable=true)
     end
     return nothing
 end

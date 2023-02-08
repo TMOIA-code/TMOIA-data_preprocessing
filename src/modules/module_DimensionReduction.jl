@@ -1,10 +1,10 @@
 module DimensionReduction
 
-using Flux, CUDA, BSON, Dates
+using Flux, CUDA, BSON, Dates, Tables
 include("utils.jl")
 include("utils_dl.jl")
-export myStructDataIn, myStructParamTrain
 include("models.jl")
+using .MyUtils
 
 export pick_SNPsInGene
 export DimReduction
@@ -15,10 +15,10 @@ function pick_SNPsInGene_ut(L_sta::Int64, L_end::Int64,
                             FileSNP::String, snp_remain::Vector{Int64}, IdPos::Vector{Int64}, w_name::String)
     #write 1st row
     @views tmpLine = my_readline(FileSNP, snp_remain[L_sta], delim=',')[Not([1,2,3,4])][IdPos]
-    write_csvRows(w_name, tmpLine, false)
+    my_write_table(tmpLine, w_name, toTable=true)
     @views for lnN in (L_sta + 1):L_end
         tmpLine = my_readline(FileSNP, snp_remain[lnN], delim=',')[Not([1,2,3,4])][IdPos]
-        write_csvRows(w_name, tmpLine, true)
+        my_write_table(tmpLine, w_name, isAppend=true, toTable=true)
     end
     return nothing
 end
@@ -85,7 +85,8 @@ function DimReduction(whichSp::String = "01", whX::String = "SNP", whY::String =
     mkpath(dirname(w_pref))
     path_wrt_r = string(w_pref, "drResult_", whX, ".txt")
     path_save_model = string(w_pref, "drModel_", whX, ".bson")
-    write_csvRows(path_wrt_r, [Dates.now(Dates.UTC), dirDataSplit, whichSp, batch_size, lr], false)
+    marks = [Dates.now(Dates.UTC), dirDataSplit, whichSp, batch_size, lr]
+    my_write_table(marks, path_wrt_r, toTable=true)
     ##
     mx_trn, mx_val, mx_tst = get_loader(whichSp, dirDataSplit, true, batch_size, whX, whY, selectY, y_selected=ySelected, std_x=stdX , std_y=stdY, std_func=stdFunc)
     num_feat = size(mx_tst[1])[1]
@@ -114,9 +115,9 @@ function DimReduction(whichSp::String = "01", whX::String = "SNP", whY::String =
     write(io, string("\n", Dates.now(Dates.UTC), "\n\n", model, "\n"))
     close(io)
     @views begin
-        g_trn = calc_RD(model, mx_trn[1], calc_whLayer, bias) |> transpose |> Tables.table ; CSV.write(string(w_pref, "trn_dr_", whX, ".txt"), g_trn, delim = "\t", header = false) ; g_trn = nothing;
-        g_val = calc_RD(model, mx_val[1], calc_whLayer, bias) |> transpose |> Tables.table ; CSV.write(string(w_pref, "val_dr_", whX, ".txt"), g_val, delim = "\t", header = false) ; g_val = nothing;
-        g_tst = calc_RD(model, mx_tst[1], calc_whLayer, bias) |> transpose |> Tables.table ; CSV.write(string(w_pref, "tst_dr_", whX, ".txt"), g_tst, delim = "\t", header = false) ; g_tst = nothing;
+        g_trn = calc_RD(model, mx_trn[1], calc_whLayer, bias) |> transpose |> Tables.table ; my_write_table(g_trn, string(w_pref, "trn_dr_", whX, ".txt")) ; g_trn = nothing;
+        g_val = calc_RD(model, mx_val[1], calc_whLayer, bias) |> transpose |> Tables.table ; my_write_table(g_val, string(w_pref, "val_dr_", whX, ".txt")) ; g_val = nothing;
+        g_tst = calc_RD(model, mx_tst[1], calc_whLayer, bias) |> transpose |> Tables.table ; my_write_table(g_tst, string(w_pref, "tst_dr_", whX, ".txt")) ; g_tst = nothing;
     end
     return nothing
 end

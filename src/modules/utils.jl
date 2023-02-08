@@ -1,9 +1,14 @@
-# Utils
-using CSV, Statistics, StatsBase, Tables, DataFrames, DelimitedFiles, Random
+module MyUtils
+
+export my_count_lines, my_read_table, my_readline, my_write_table
+export std_normalize!, std_zscore!
+export conc_fileParts, format_numLen, cut_vec_str, multiThreadSplit, rename_files
+
+using StatsBase, Tables, DelimitedFiles
 #using StatsBase: ZScoreTransform, UnitRangeTransform, transform, fit
 #using PProf, Profile
 #using BenchmarkTools
-
+#using Statistics, DataFrames
 
 function my_count_lines(filePath::String)::Int64## The result may differ to `wc -l filePath`
     num_l::Int64 = 0
@@ -95,13 +100,30 @@ end
 =#
 
 
-function my_read_table(Xdir::String, type::DataType=Float32, delim::Char=',', isTranspose::Bool=false)
-    txt = open(Xdir) do file; read(file, String); end;
+function my_read_table(XPath::String, type::DataType=Float32, delim::Char=',', isTranspose::Bool=false)
+    txt = open(XPath) do file; read(file, String); end;
     out = readdlm(IOBuffer(txt), delim, type)
     if isTranspose; out = transpose(out) |> Matrix; end;
     return out
 end
 
+function my_write_table(tableO, XPath::String; delim::Char='\t', isAppend::Bool=false, toTable::Bool=false)
+    if isAppend
+        isapd = "a"
+    else
+        isapd = "w"
+    end
+    if toTable
+        open(XPath, isapd) do io
+            writedlm(io, Tables.table(tableO), delim)
+        end
+    else
+        open(XPath, isapd) do io
+            writedlm(io, tableO, delim)
+        end
+    end
+    return nothing
+end
 
 function std_zscore!(mx::Matrix) ## By row
     dt = StatsBase.fit(StatsBase.ZScoreTransform, mx)
@@ -160,6 +182,7 @@ function fill_NA(vecin::Vector{String})
 end
 =#
 
+#=
 function write_csvRows(filename::String, strIn::Vector, isAppend::Bool=false; lineBreakHead::Bool=false, lineBreakTail::Bool=true, delim::String="\t")
     if lineBreakHead; tmp_str = "\n"; else tmp_str = ""; end;
     for tt in 1:length(strIn)
@@ -179,7 +202,7 @@ function write_csvRows(filename::String, strIn::Vector, isAppend::Bool=false; li
     close(io)
     return nothing
 end
-
+=#
 
 function multiThreadSplit(numRC::Int64, numThread::Int64)
     pLen = numRC / numThread |> floor
@@ -198,24 +221,6 @@ function cut_vec_str(vec_str::Vector, len::Int64=15)
     for strN in eachindex(vec_str)
         append!(out, [first(vec_str[strN], len)])
     end
-    return out
-end
-
-
-## Pick samples' id owning meth, mirna and mrna
-function sampl_own_Xomics(origFilePaths::Vector{String}, len_id::Int64=16, delim::String="\t", isWrite::Bool=false, wrt_pref::String=".ownAll_")
-    out = [] |> Vector{String}
-    for fpath in eachindex(origFilePaths)
-        if fpath < 2
-            out = my_readline(origFilePaths[fpath], 1, delim=delim)[Not(1)]
-            if len_id > 1; out = cut_vec_str(out, len_id); end;
-            continue
-        end
-        tcgaB = my_readline(origFilePaths[fpath], 1, delim=delim)[Not(1)]
-        if len_id > 1; tcgaB = cut_vec_str(tcgaB, len_id); end;
-        out = intersect(unique(out), unique(tcgaB))
-    end
-    if isWrite; CSV.write(string(wrt_pref, "_len_", len_id, ".csv"), Tables.table(out), header=false); end;
     return out
 end
 
@@ -242,3 +247,5 @@ end
 # e.g.
 # rename_files("xxx/r10/", "val", "x-val", "phen")
 # rename_files("xxx/r10/", "val", "y-val", "x-")
+
+end
