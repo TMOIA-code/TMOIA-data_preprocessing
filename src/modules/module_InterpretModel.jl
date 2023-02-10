@@ -3,8 +3,10 @@ module InterpretModel
 
 using BSON, Flux, Random, Tables
 
-include("utils.jl")
-using .MyUtils
+if !isdefined(@__MODULE__, :MyUtils)
+    include("utils.jl")
+    using .MyUtils
+end
 
 export interpreter_inDir, interpreter
 

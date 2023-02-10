@@ -1,7 +1,9 @@
 using CUDA, Flux, BSON, Random
-include("utils.jl")
 include("types.jl")
-using .MyUtils
+if !isdefined(@__MODULE__, :MyUtils)
+    include("utils.jl")
+    using .MyUtils
+end
 
 function zero_gradient!(myGradient, whToZeros)
     @views begin

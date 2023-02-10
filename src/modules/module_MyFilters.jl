@@ -1,7 +1,9 @@
 module MyFilters
 
-include("utils.jl")
-using .MyUtils
+if !isdefined(@__MODULE__, :MyUtils)
+    include("utils.jl")
+    using .MyUtils
+end
 using Tables, CSV
 
 export filter_cols, filter_rows

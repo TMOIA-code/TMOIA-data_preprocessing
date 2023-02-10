@@ -1,10 +1,12 @@
 module DimensionReduction
 
 using Flux, CUDA, BSON, Dates, Tables
-include("utils.jl")
 include("utils_dl.jl")
 include("models.jl")
-using .MyUtils
+if !isdefined(@__MODULE__, :MyUtils)
+    include("utils.jl")
+    using .MyUtils
+end
 
 export pick_SNPsInGene
 export DimReduction

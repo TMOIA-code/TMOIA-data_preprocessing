@@ -1,8 +1,10 @@
 module SplitData
 
 using Random
-include("utils.jl")
-using .MyUtils
+if !isdefined(@__MODULE__, :MyUtils)
+    include("utils.jl")
+    using .MyUtils
+end
 
 export write_randomRepeats, my_split_bootstrap
 export pipe_randomSplits

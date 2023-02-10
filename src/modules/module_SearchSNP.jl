@@ -1,7 +1,9 @@
 module SearchSNP
 
-include("utils.jl")
-using .MyUtils
+if !isdefined(@__MODULE__, :MyUtils)
+    include("utils.jl")
+    using .MyUtils
+end
 
 export search_gene_of_SNP
 
